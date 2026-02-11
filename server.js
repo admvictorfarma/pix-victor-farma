@@ -2,8 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
-import mercadopago from 'mercadopago';
+import { createRequire } from 'module';
 
+const require = createRequire(import.meta.url);
+const mercadopago = require('mercadopago');
 const { MercadoPagoConfig, Payment } = mercadopago;
 
 dotenv.config();
