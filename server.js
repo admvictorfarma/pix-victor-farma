@@ -2,11 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
-const mercadopago = require('mercadopago');
-const { MercadoPagoConfig, Payment } = mercadopago;
 
 dotenv.config();
 
@@ -22,11 +17,8 @@ const paymentsDB = new Map();
 // =======================
 // Mercado Pago config
 // =======================
-const client = new MercadoPagoConfig({
-  accessToken: process.env.MP_ACCESS_TOKEN
-});
-
-const payment = new Payment(client);
+const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
+const MP_API_BASE = 'https://api.mercadopago.com/v1';
 
 // =======================
 // Health check
@@ -34,6 +26,41 @@ const payment = new Payment(client);
 app.get('/', (req, res) => {
   res.send('API PIX Mercado Pago rodando 🚀');
 });
+
+// =======================
+// Função auxiliar para chamar API do Mercado Pago
+// =======================
+async function createPayment(paymentData) {
+  const response = await fetch(`${MP_API_BASE}/payments`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${MP_ACCESS_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(paymentData)
+  });
+
+  if (!response.ok) {
+    throw new Error(`API Error: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+async function getPayment(paymentId) {
+  const response = await fetch(`${MP_API_BASE}/payments/${paymentId}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${MP_ACCESS_TOKEN}`,
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`API Error: ${response.status}`);
+  }
+
+  return response.json();
+}
 
 // =======================
 // Criar pagamento PIX
@@ -46,14 +73,12 @@ app.post('/pix', async (req, res) => {
       return res.status(400).json({ error: 'Valor inválido' });
     }
 
-    const result = await payment.create({
-      body: {
-        transaction_amount: Number(valor),
-        description: descricao || 'Pagamento PIX',
-        payment_method_id: 'pix',
-        payer: {
-          email: 'jardelanalista@outlook.com'
-        }
+    const result = await createPayment({
+      transaction_amount: Number(valor),
+      description: descricao || 'Pagamento PIX',
+      payment_method_id: 'pix',
+      payer: {
+        email: 'jardelanalista@outlook.com'
       }
     });
 
@@ -68,9 +93,8 @@ app.post('/pix', async (req, res) => {
     res.json({
       id: result.id,
       status: result.status,
-      qr_code: result.point_of_interaction.transaction_data.qr_code,
-      qr_code_base64:
-        result.point_of_interaction.transaction_data.qr_code_base64
+      qr_code: result.point_of_interaction?.transaction_data?.qr_code || null,
+      qr_code_base64: result.point_of_interaction?.transaction_data?.qr_code_base64 || null
     });
 
   } catch (error) {
@@ -86,8 +110,7 @@ app.get('/status/:paymentId', async (req, res) => {
   const { paymentId } = req.params;
 
   try {
-    // Sempre consulta o status atualizado do Mercado Pago
-    const mpPayment = await payment.get({ id: paymentId });
+    const mpPayment = await getPayment(paymentId);
 
     // Atualiza no "banco"
     paymentsDB.set(paymentId, {
@@ -141,7 +164,7 @@ app.post('/webhook', async (req, res) => {
     const paymentId = req.body?.data?.id?.toString();
     if (!paymentId) return res.sendStatus(200);
 
-    const mpPayment = await payment.get({ id: paymentId });
+    const mpPayment = await getPayment(paymentId);
 
     // 🔄 Atualiza no "banco"
     if (paymentsDB.has(paymentId)) {
