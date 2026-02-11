@@ -2,7 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
-import { MercadoPagoConfig, Payment } from 'mercadopago';
+import mercadopago from 'mercadopago';
+
+const { MercadoPagoConfig, Payment } = mercadopago;
 
 dotenv.config();
 
